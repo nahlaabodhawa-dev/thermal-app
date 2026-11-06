@@ -1,4 +1,5 @@
 import os
+import io
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -13,8 +14,6 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeRegressor
 from xgboost import XGBRegressor
-
-# Configure Streamlit page
 st.set_page_config(
     page_title="Thermal Properties Analysis & Models",
     page_icon="📊",
@@ -22,24 +21,25 @@ st.set_page_config(
 )
 
 st.title("📊 Thermal Properties Analysis & Critical Point Prediction Dashboard")
-st.markdown("This application trains machine learning models, evaluates their performance, and plots phase envelopes dynamically.")
-
-# Sidebar Settings
+st.markdown("This application trains machine learning models, evaluates their performance, plots phase envelopes, and analyzes all components dynamically.")
 st.sidebar.header("Execution Settings")
-csv_file_path = st.sidebar.text_input("CSV File Path", value=r"c:\Users\hp\Desktop\critprop_merged_final.csv")
+csv_file_path = st.sidebar.text_input("CSV File Path", value="critprop_merged_final.csv")
 run_button = st.sidebar.button("Start Training & Analyze Results", type="primary")
 
-# --- QR Code in Sidebar ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("📱 App QR Code")
-app_url = "https://your-app-name.streamlit.app"  # استبدل هذا الرابط برابط تطبيقك الفعلي لاحقاً
+app_url = "https://your-app-name.streamlit.app"
+
 qr = qrcode.QRCode(version=1, box_size=10, border=4)
 qr.add_data(app_url)
 qr.make(fit=True)
 img_qr = qr.make_image(fill_color="black", back_color="white")
-st.sidebar.image(img_qr, caption="Scan to open app", use_column_width=True)
 
-# Helper function for generating phase envelopes
+buf = io.BytesIO()
+img_qr.save(buf, format="PNG")
+byte_im = buf.getvalue()
+
+st.sidebar.image(byte_im, caption="Scan to open app", use_container_width=True)
 def generate_envelope_plot(df, mixture_composition, model_key, is_real_data, scaler_X, model_colors, model_obj_dict=None):
     comp_names = list(mixture_composition.keys())
     fractions = np.array(list(mixture_composition.values()), dtype=float)
@@ -124,9 +124,9 @@ def generate_envelope_plot(df, mixture_composition, model_key, is_real_data, sca
 
 if run_button:
     if not os.path.exists(csv_file_path):
-        st.error(f"File not found at the specified path: {csv_file_path}")
+        st.error(f"File not found at the specified path: {csv_file_path}. Please make sure 'critprop_merged_final.csv' is uploaded to your repository.")
     else:
-        with st.spinner("Reading data, training models, and generating plots... Please wait."):
+        with st.spinner("Reading data, training models, and generating comprehensive results... Please wait."):
             os.makedirs("models_output_plots", exist_ok=True)
             os.makedirs("loss_curves_plots", exist_ok=True)
             os.makedirs("envelopes_diagrams/combined", exist_ok=True)
@@ -158,7 +158,6 @@ if run_button:
                 "xgboost": "#dc3545"
             }
             
-            # 1. Plot Original Data Distribution
             fig_orig, axes = plt.subplots(1, 2, figsize=(12, 5), dpi=100, facecolor="white")
             axes[0].scatter(clean_df["Vc"], clean_df["Tc mean (K)"], color="purple", alpha=0.6, edgecolors="k")
             axes[0].set_title("Original Data: Vc vs Tc", fontsize=11, fontweight="bold")
@@ -265,8 +264,12 @@ if run_button:
             metrics_df = pd.DataFrame(metrics_results)
             st.success("Models training completed successfully!")
             
-            # Organize outputs using Tabs
-            tab1, tab2, tab3 = st.tabs(["📊 Performance Metrics", "📉 Loss Curves", "📈 Phase Envelopes Comparison"])
+            tab1, tab2, tab3, tab4 = st.tabs([
+                "📊 Performance Metrics", 
+                "📉 Loss Curves", 
+                "🌐 All Components Predictions", 
+                "📈 Phase Envelopes Comparison"
+            ])
             
             with tab1:
                 st.subheader("📋 Model Performance Comparison (Metrics Summary)")
@@ -282,10 +285,45 @@ if run_button:
                         plt.close(loss_figs[m_name])
             
             with tab3:
+                st.subheader("🌐 Comprehensive Evaluation Across All Components")
+                st.markdown("This table iterates through **all components** in the dataset, predicting their critical properties ($Tc, Pc$) using the trained models.")
+                
+                all_comp_preds = []
+                for _, row in clean_df.iterrows():
+                    comp_name = row["name"]
+                    actual_tc = row["Tc mean (K)"]
+                    actual_pc = row["Pc mean (bar)"]
+                    
+                    feat = np.array([[float(row["Vc"]), float(row["Mw"]), float(row["Zc"])]])
+                    
+                    feat_mlp = scaler_X.transform(feat)
+                    pred_rf_tc = trained_models["random_forest"]["model_tc"].predict(feat)[0]
+                    pred_rf_pc = trained_models["random_forest"]["model_pc"].predict(feat)[0]
+                    pred_xgb_tc = trained_models["xgboost"]["model_tc"].predict(feat)[0]
+                    pred_xgb_pc = trained_models["xgboost"]["model_pc"].predict(feat)[0]
+                    pred_mlp_tc = trained_models["mlp"]["model_tc"].predict(feat_mlp)[0]
+                    pred_mlp_pc = trained_models["mlp"]["model_pc"].predict(feat_mlp)[0]
+                    
+                    all_comp_preds.append({
+                        "Component": comp_name,
+                        "Actual Tc (K)": round(actual_tc, 2),
+                        "RF Tc (K)": round(pred_rf_tc, 2),
+                        "XGB Tc (K)": round(pred_xgb_tc, 2),
+                        "MLP Tc (K)": round(pred_mlp_tc, 2),
+                        "Actual Pc (bar)": round(actual_pc, 2),
+                        "RF Pc (bar)": round(pred_rf_pc, 2),
+                        "XGB Pc (bar)": round(pred_xgb_pc, 2),
+                        "MLP Pc (bar)": round(pred_mlp_pc, 2),
+                    })
+                
+                df_all_predictions = pd.DataFrame(all_comp_preds)
+                st.dataframe(df_all_predictions, use_container_width=True)
+                df_all_predictions.to_csv("models_output_plots/all_components_predictions_summary.csv", index=False)
+            
+            with tab4:
                 st.subheader("📈 P-T Phase Envelopes & Mixtures Analysis")
                 available_names = clean_df["name"].dropna().unique()
                 
-                # خيارات لاختيار نوع النظام والمخاليط ديناميكياً
                 system_category = st.selectbox("Select System Category:", ["Pure Component (Pure)", "Ternary Mixture (3 Components)", "Pentary Mixture (5 Components)", "Custom Mixture Selection"])
                 
                 mix_dict = {}
