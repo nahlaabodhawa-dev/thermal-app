@@ -17,11 +17,10 @@ from xgboost import XGBRegressor
 st.set_page_config(
     page_title="Thermal Properties Analysis & Models",
     page_icon="📊",
-    layout="wide"
-)
-
+    layout="wide")
 st.title("📊 Thermal Properties Analysis & Critical Point Prediction Dashboard")
 st.markdown("This application trains machine learning models, evaluates their performance, plots phase envelopes, and analyzes all components dynamically.")
+
 st.sidebar.header("Execution Settings")
 csv_file_path = st.sidebar.text_input("CSV File Path", value="critprop_merged_final.csv")
 run_button = st.sidebar.button("Start Training & Analyze Results", type="primary")
@@ -40,6 +39,8 @@ img_qr.save(buf, format="PNG")
 byte_im = buf.getvalue()
 
 st.sidebar.image(byte_im, caption="Scan to open app", use_container_width=True)
+
+# Helper function for generating phase envelopes
 def generate_envelope_plot(df, mixture_composition, model_key, is_real_data, scaler_X, model_colors, model_obj_dict=None):
     comp_names = list(mixture_composition.keys())
     fractions = np.array(list(mixture_composition.values()), dtype=float)
@@ -158,6 +159,7 @@ if run_button:
                 "xgboost": "#dc3545"
             }
             
+            # 1. Plot Original Data Distribution
             fig_orig, axes = plt.subplots(1, 2, figsize=(12, 5), dpi=100, facecolor="white")
             axes[0].scatter(clean_df["Vc"], clean_df["Tc mean (K)"], color="purple", alpha=0.6, edgecolors="k")
             axes[0].set_title("Original Data: Vc vs Tc", fontsize=11, fontweight="bold")
@@ -264,12 +266,12 @@ if run_button:
             metrics_df = pd.DataFrame(metrics_results)
             st.success("Models training completed successfully!")
             
+            # Organize outputs using Tabs (including All Components Evaluation)
             tab1, tab2, tab3, tab4 = st.tabs([
                 "📊 Performance Metrics", 
                 "📉 Loss Curves", 
                 "🌐 All Components Predictions", 
-                "📈 Phase Envelopes Comparison"
-            ])
+                "📈 Phase Envelopes Comparison"])
             
             with tab1:
                 st.subheader("📋 Model Performance Comparison (Metrics Summary)")
